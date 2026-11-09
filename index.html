@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c1011">
+  <meta name="description" content="FRAME, la tua cineteca personale. Film, serie TV, anime e ogni storia che vuoi ricordare.">
+  <title>FRAME · La tua cineteca</title>
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./assets/icon-192.png">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="drawer-scrim" id="drawerScrim" hidden></div>
+  <div class="shell" id="appShell">
+    <aside class="sidebar" id="sidebar" aria-label="Navigazione principale">
+      <div class="brand"><span class="brand-icon">f.</span><span>frame<span class="brand-period">.</span></span><button class="close-drawer icon-button" id="closeDrawer" aria-label="Chiudi menu">✕</button></div>
+      <div class="side-caption">Esplora</div>
+      <nav class="nav-stack" id="statusNav"></nav>
+      <div class="side-heading"><span>Le mie categorie</span><button class="small-icon" id="manageCategories" title="Gestisci categorie" aria-label="Gestisci categorie">⚙</button></div>
+      <nav id="categoryNav" class="nav-stack categories-nav"></nav>
+      <button class="add-category" id="addCategorySide">＋ Crea una categoria</button>
+      <div class="sidebar-spacer"></div>
+      <button class="sidebar-link" id="backupBtn">⇩ <span>Backup e importazione</span></button>
+      <button class="sidebar-link" id="aboutBtn">ⓘ <span>Info e crediti</span></button>
+      <div class="profile"><span class="avatar" id="avatar">F</span><span class="profile-text"><strong id="profileName">Il mio spazio</strong><small id="profileSub">Le tue storie, ovunque</small></span><button class="profile-exit" id="logoutBtn" title="Esci" aria-label="Esci dall'account" hidden>⇥</button></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div class="top-left"><button class="mobile-menu icon-button" id="openDrawer" aria-label="Apri menu">☰</button><span>Il tuo <b>frame.</b></span></div>
+        <div class="top-right"><label class="header-search"><span aria-hidden="true">⌕</span><input id="searchAll" type="search" placeholder="Cerca nel tuo catalogo..." aria-label="Cerca nel catalogo"></label><span class="sync-pill" id="syncLabel"><span class="sync-dot"></span><span id="syncText">Avvio...</span></span><button class="top-avatar" id="userBtn" title="Account">F</button></div>
+      </header>
+      <section class="hero" aria-labelledby="heroTitle">
+        <div class="hero-illustration" aria-hidden="true"><div class="sun"></div><div class="sun-hole"></div><div class="sun-ray ray-one"></div><div class="sun-ray ray-two"></div><div class="sun-ray ray-three"></div><div class="sun-ray ray-four"></div><div class="sun-ray ray-five"></div><div class="sun-ray ray-six"></div><div class="beam"></div><div class="ridge"></div></div>
+        <div class="hero-content"><div class="eyebrow">La tua collezione personale</div><h1 id="heroTitle">Le storie che <em>restano.</em></h1><p>Ogni film, ogni serie, ogni anime. Un luogo tutto tuo per ricordare ciò che ami.</p><button class="hero-action" id="heroBrowse">Esplora la cineteca <span>↗</span></button></div>
+        <div class="hero-feature" id="heroFeature" hidden><small>★ IL TUO NUMERO UNO</small><strong id="topTitle"></strong><span id="topRating"></span></div>
+      </section>
+      <section class="library" id="library">
+        <div class="section-top"><div><div class="kicker">I tuoi titoli, i tuoi voti</div><h2 id="sectionTitle">La tua <em>cineteca</em></h2><p class="section-subtitle" id="sectionSubtitle"></p></div><div class="section-actions"><button class="outline-button" id="quickPlanned">Solo da vedere</button><button class="accent-button" id="addEntryBtn">＋ Aggiungi titolo</button></div></div>
+        <div class="filters"><div class="filter-pills" id="filterPills"></div><label class="sort-box"><span class="sr-only">Ordina</span><select id="sortSelect"><option value="rating-desc">↓ Voto più alto</option><option value="rating-asc">↑ Voto più basso</option><option value="recent">✦ Aggiunti di recente</option><option value="title">A–Z Titolo</option></select></label></div>
+        <div id="libraryCards" class="cards" aria-live="polite"></div>
+        <div id="emptyState" class="empty-state" hidden><div class="empty-symbol">✦</div><h3 id="emptyTitle">Qui iniziano le tue storie.</h3><p id="emptyMessage">Aggiungi il primo titolo per creare la tua cineteca.</p><button class="accent-button" id="emptyAdd">＋ Aggiungi titolo</button></div>
+      </section>
+      <footer class="footer">FRAME · La tua libreria personale. <a href="#" id="footerCredits">Dati e locandine: TMDB · Crediti e condizioni</a></footer>
+    </main>
+  </div>
+  <div class="toast-stack" id="toasts" role="status" aria-live="polite"></div>
+  <div class="modal-backdrop" id="modalBackdrop" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-head"><div><div class="modal-kicker" id="modalKicker">FRAME</div><h2 id="modalTitle">Aggiungi un titolo</h2><p id="modalIntro"></p></div><button class="close-modal icon-button" id="closeModal" aria-label="Chiudi">✕</button></div><div id="modalBody"></div></section></div>
+  <noscript>Per utilizzare FRAME è necessario attivare JavaScript.</noscript>
+  <script type="module" src="./app.js"></script>
+</body></html>
