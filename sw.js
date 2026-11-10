@@ -4,12 +4,12 @@
  */
 'use strict';
 
-const CACHE = 'frame-cineteca-static-v2';
+const CACHE = 'frame-cineteca-static-v3';
 const OWN_CACHES = ['frame-static-v1'];
 const OWN_PREFIX = 'frame-cineteca-static-';
 const SCOPE_URL = new URL(self.registration.scope);
 const SHELL = [
-  './', './index.html', './styles.css', './app.js', './data.js',
+  './', './index.html', './styles.css', './app.js', './data.js', './identity.js', './explore.js',
   './manifest.webmanifest', './assets/favicon.svg',
   './assets/icon-192.png', './assets/icon-512.png'
 ];

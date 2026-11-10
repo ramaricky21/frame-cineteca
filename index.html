@@ -17,6 +17,7 @@
     <aside class="sidebar" id="sidebar" aria-label="Navigazione principale">
       <div class="brand"><span class="brand-icon">f.</span><span>frame<span class="brand-period">.</span></span><button class="close-drawer icon-button" id="closeDrawer" aria-label="Chiudi menu">✕</button></div>
       <div class="side-caption">Esplora</div>
+      <nav class="nav-stack"><button class="nav-item explore-nav" id="navExplore"><span class="nav-symbol">✦</span><span>Scopri nuovi titoli</span></button></nav>
       <nav class="nav-stack" id="statusNav"></nav>
       <div class="side-heading"><span>Le mie categorie</span><button class="small-icon" id="manageCategories" title="Gestisci categorie" aria-label="Gestisci categorie">⚙</button></div>
       <nav id="categoryNav" class="nav-stack categories-nav"></nav>
@@ -31,13 +32,33 @@
         <div class="top-left"><button class="mobile-menu icon-button" id="openDrawer" aria-label="Apri menu">☰</button><span>Il tuo <b>frame.</b></span></div>
         <div class="top-right"><label class="header-search"><span aria-hidden="true">⌕</span><input id="searchAll" type="search" placeholder="Cerca nel tuo catalogo..." aria-label="Cerca nel catalogo"></label><span class="sync-pill" id="syncLabel"><span class="sync-dot"></span><span id="syncText">Avvio...</span></span><button class="top-avatar" id="userBtn" title="Account">F</button></div>
       </header>
-      <section class="hero" aria-labelledby="heroTitle">
+      <section class="hero" id="hero" aria-labelledby="heroTitle">
         <div class="hero-illustration" aria-hidden="true"><div class="sun"></div><div class="sun-hole"></div><div class="sun-ray ray-one"></div><div class="sun-ray ray-two"></div><div class="sun-ray ray-three"></div><div class="sun-ray ray-four"></div><div class="sun-ray ray-five"></div><div class="sun-ray ray-six"></div><div class="beam"></div><div class="ridge"></div></div>
         <div class="hero-content"><div class="eyebrow">La tua collezione personale</div><h1 id="heroTitle">Le storie che <em>restano.</em></h1><p>Ogni film, ogni serie, ogni anime. Un luogo tutto tuo per ricordare ciò che ami.</p><button class="hero-action" id="heroBrowse">Esplora la cineteca <span>↗</span></button></div>
         <div class="hero-feature" id="heroFeature" hidden><small>★ IL TUO NUMERO UNO</small><strong id="topTitle"></strong><span id="topRating"></span></div>
       </section>
+      <section class="explore" id="explore" hidden>
+        <div class="explore-hero"><div class="kicker">IL CATALOGO TMDB A PORTATA DI MANO</div><h1>La prossima storia <em>ti aspetta.</em></h1><p>Scopri film, serie TV e anime, anche quando non sai cosa cercare. Esplora il catalogo oppure digita un titolo.</p></div>
+        <div class="explore-controls">
+          <div class="explore-search-wrap"><span aria-hidden="true">⌕</span><input class="input" type="search" id="exploreSearch" placeholder="Cerca film, serie e anime..." aria-label="Cerca titoli su TMDB"><button class="accent-button" id="exploreSearchBtn" type="button">Cerca</button></div>
+          <div class="explore-filter-row">
+            <label>Tipo di contenuto<select class="select" id="exploreMedia"><option value="all">Tutti i titoli</option><option value="movie">Film</option><option value="tv">Serie TV</option><option value="anime">Anime (giapponesi)</option></select></label>
+            <label>Genere<select class="select" id="exploreGenre"><option value="">Tutti i generi</option><option value="16">Animazione</option><option value="35">Commedia</option><option value="18">Drammatico</option><option value="80">Crime</option><option value="99">Documentario</option><option value="9648">Mistero</option><option value="10751">Famiglia</option></select></label>
+            <label>Anno<input class="input" id="exploreYear" type="number" min="1900" max="2100" placeholder="Tutti"></label>
+            <label>Ordina per<select class="select" id="exploreSort"><option value="popularity.desc">Più popolari</option><option value="vote_average.desc">Più votati</option><option value="date.desc">Più recenti</option></select></label>
+          </div>
+        </div>
+        <div class="section-top"><div><div class="kicker">TROVA QUALCOSA DI NUOVO</div><h2>Scopri <em>nuovi titoli</em></h2><p class="section-subtitle" id="exploreCount"></p></div></div>
+        <p class="error-text" id="exploreError" role="alert"></p>
+        <div class="cards explore-cards" id="exploreCards" aria-live="polite"></div>
+        <div class="explore-loading" id="exploreLoading" hidden><span class="spinner"></span> Caricamento dal catalogo TMDB...</div>
+        <div class="empty-state" id="exploreEmpty" hidden><h3>Nessun titolo da mostrare.</h3><p>Prova filtri differenti o un altro titolo.</p></div>
+        <div class="explore-more-wrap"><button class="outline-button" id="exploreMore" hidden>Mostra altri titoli ↓</button></div>
+        <p class="explore-disclaimer">Trame, valutazioni e locandine provengono da TMDB. La tua cineteca e i tuoi voti sono separati.</p>
+      </section>
       <section class="library" id="library">
         <div class="section-top"><div><div class="kicker">I tuoi titoli, i tuoi voti</div><h2 id="sectionTitle">La tua <em>cineteca</em></h2><p class="section-subtitle" id="sectionSubtitle"></p></div><div class="section-actions"><button class="outline-button" id="quickPlanned">Solo da vedere</button><button class="accent-button" id="addEntryBtn">＋ Aggiungi titolo</button></div></div>
+        <div class="duplicate-banner" id="duplicateBanner" hidden><span>ⓘ</span><p id="duplicateText"></p><button class="outline-button" id="fixDuplicates">Verifica i duplicati</button></div>
         <div class="filters"><div class="filter-pills" id="filterPills"></div><label class="sort-box"><span class="sr-only">Ordina</span><select id="sortSelect"><option value="rating-desc">↓ Voto più alto</option><option value="rating-asc">↑ Voto più basso</option><option value="recent">✦ Aggiunti di recente</option><option value="title">A–Z Titolo</option></select></label></div>
         <div id="libraryCards" class="cards" aria-live="polite"></div>
         <div id="emptyState" class="empty-state" hidden><div class="empty-symbol">✦</div><h3 id="emptyTitle">Qui iniziano le tue storie.</h3><p id="emptyMessage">Aggiungi il primo titolo per creare la tua cineteca.</p><button class="accent-button" id="emptyAdd">＋ Aggiungi titolo</button></div>

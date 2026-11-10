@@ -1,39 +1,36 @@
-# FRAME — Cineteca personale (progetto nuovo)
+# FRAME — Cineteca personale
 
-Web app installabile (PWA) per catalogare film, anime, serie TV, live action e altre opere.
+Questa è la **versione aggiornata al 10 novembre 2026** del sito FRAME già pubblicato su Cloudflare Pages mediante il repository GitHub `ramaricky21/frame-cineteca`. Non modifica Figurine Club.
 
-- Accesso email/password con Firebase Authentication.
-- Sincronizzazione tra smartphone, tablet e desktop tramite Cloud Firestore.
-- Ricerca TMDB e locandine automatiche, usando una chiave API TMDB v3.
-- Categorie create dall'utente: creazione, rinomina, eliminazione senza eliminare titoli.
-- Più categorie per titolo, note, stati, voti anche `9+`, `9-`, `10 e lode`, `11/10`.
-- Ordinamento per voto (predefinito), ricerca, filtri, esportazione/importazione JSON.
-- Installabile dal browser su dispositivo compatibile; utilizzo base senza abbonamento.
+## Funzioni principali
 
-## Avvio
+- Login email/password Firebase e sincronizzazione Firestore.
+- Cineteca con film, serie, anime, altri formati, categorie, stati, voti personalizzati, locandine e note.
+- **Scopri nuovi titoli**: ricerca/esplorazione diretta di TMDB per popolarità, valutazioni, novità, tipo di opera, genere, anno; scheda dettagliata e pulsante «Aggiungi ai Da vedere».
+- **Controllo duplicati** in ricerca TMDB, in Esplora, al salvataggio, all'importazione dei backup e durante la modifica della scheda.
+- Confronto preventivo delle differenze (voto, stato, categorie, note ecc.); scelta esplicita prima di aggiornare una scheda già esistente.
+- Revisione volontaria delle eventuali vecchie schede duplicate; nessuna cancellazione automatica su Firebase.
+- Backup personale in JSON; utilizzo come PWA installabile.
 
-Il file da modificare è **`config.js`**. Inserisci i parametri di un **nuovo** progetto Firebase Web e la tua chiave API TMDB.
-Dopo, carica tutti i file di questa cartella nella radice di un **nuovo** repository GitHub pubblico e attiva Pages su `main / (root)`.
-Copia le regole del pacchetto Firebase nella console del progetto Firebase nuovo.
+## File e aggiornamento
 
-**Non caricare solo questo ZIP in GitHub:** estrai i file e trascina il *contenuto* della cartella. `index.html` deve stare nella root del repository.
+- `index.html`: struttura dell'app e pagina Esplora.
+- `styles.css`: grafica, inclusa versione mobile.
+- `app.js`: interfaccia, persistenza, salvataggio e gestione dei conflitti.
+- `data.js`: modello dei titoli e validazione dei backup.
+- `identity.js`: riconoscimento delle opere e creazione delle chiavi univoche.
+- `explore.js`: ricerca e scoperta TMDB.
+- `config.js`: parametri pubblici di Firebase e chiave TMDB; già configurato nel backup originale.
+- `sw.js`, `manifest.webmanifest`, `assets/`: PWA, icone e risorse statiche.
 
-Per testare l'interfaccia prima della configurazione, apri il sito e premi **Prova la demo**. I dati demo sono temporanei e non si sincronizzano.
+Per il deploy, prima pubblica le nuove **regole Firestore** fornite nel pacchetto separato. Poi estrai i file della cartella `APP_FRAME` e caricali nella root del repository GitHub esistente, branch `main`. Il sito Cloudflare Pages collegato a GitHub si aggiorna automaticamente dopo il deploy.
 
-Guida completa: `GUIDA_PASSO_PASSO.md` nel pacchetto completo.
+Non caricare lo ZIP come file singolo nel repository; estrailo. Non aggiornare GitHub Pages né altri repository. Non è necessaria nessuna dipendenza npm.
 
-## Struttura
+## Nota sui duplicati
 
-- `index.html`, `styles.css`, `app.js`, `data.js`: interfaccia e logica.
-- `config.js`: configurazione pubblica, da completare manualmente.
-- `manifest.webmanifest`, `sw.js`, `assets/`: installazione PWA.
-- `.nojekyll`: compatibilità GitHub Pages.
+Per i nuovi titoli catalogati su TMDB viene utilizzata una chiave univoca su Firestore e una transazione. Il confronto tra vecchie schede senza ID TMDB si basa su titolo (anche originale), anno quando presente e formato compatibile. Non esiste un criterio perfetto per titoli manuali molto ambigui: per questo i casi preesistenti si verificano prima di cancellare elementi.
 
-## Sicurezza e limiti
+## Verifica
 
-Per ogni utente Firebase: `users/{uid}/entries` e `users/{uid}/categories`, protetti da regole che consentono accesso soltanto al proprietario.
-La configurazione Web Firebase non è una chiave amministrativa. La chiave TMDB presente in `config.js`, invece, sarà esposta agli utenti del repository pubblico; usa soltanto la chiave API v3 concessa per questo uso e rispetta le condizioni TMDB. Non pubblicare chiavi di servizio Firebase, password o credenziali cloud.
-
-TMDB: gratuito per uso personale non commerciale con attribuzione obbligatoria. GitHub Pages gratuito per repository pubblici su GitHub Free; Firebase Spark ha quote gratuite. Nessuna garanzia sui cambiamenti futuri delle condizioni di terzi.
-
-Questa app non è collegata a Figurine Club e non ne importa/modifica i dati.
+Usa `VERIFICHE_POST_AGGIORNAMENTO.md` nel pacchetto completo. I test browser automatizzati sono stati eseguiti su dati dimostrativi e API TMDB simulate; le regole Firebase reali vanno pubblicate dalla console del proprietario.

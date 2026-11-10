@@ -1,6 +1,8 @@
 import { FIREBASE_CONFIG, TMDB_API_KEY } from './config.js';
 import { DEFAULT_CATEGORIES, STATUSES, FORMATS, PALETTE, parseRating,
   filteredEntries, sortedEntries, slugId, normalizeEntry, cleanCategory, backupPayload, validateBackup } from './data.js';
+import { findDuplicate, duplicateGroups, uniqueEntries, changedFields, workKey } from './identity.js';
+import { browseTMDB } from './explore.js';
 
 const $ = (id)=>document.getElementById(id);
 const esc = (value)=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -8,7 +10,7 @@ const configured = Object.values(FIREBASE_CONFIG).every(v=>typeof v==='string'&&
 const tmdbReady = typeof TMDB_API_KEY==='string'&&TMDB_API_KEY.length>=8&&!TMDB_API_KEY.includes('INSERISCI');
 const state = { mode:'startup', user:null, entries:[], categories:[], status:'all', category:'all', query:'', sort:'rating-desc',
   unsubs:[], sdk:null, auth:null, db:null, selectedTmdb:null, searchSeq:0, searchTimer:null, busy:false, modalKind:'',
-  initialized:false, listenersReady:0 };
+  initialized:false, listenersReady:0, page:'library', explore:{query:'',media:'all',genre:'',year:'',sort:'popularity.desc',page:0,items:[],hasMore:true,loading:false,requestId:0,controller:null} };
 const DEMO_ITEMS = [
   {id:'demo-chainsaw',title:'Chainsaw Man',format:'Anime',status:'seen',ratingLabel:'11/10',categoryIds:['anime','fantasy'],demoPoster:'assets/frame_mock_chainsaw.jpg',createdMs:800},
   {id:'demo-alya',title:'Alya Sometimes Hides Her Feelings in Russian',format:'Anime',status:'seen',ratingLabel:'10 e lode',categoryIds:['anime','romance'],demoPoster:'assets/frame_mock_alya.jpg',createdMs:700},
@@ -50,11 +52,17 @@ function imageUrl(entry,size='w342'){
 function categoryLabel(entry){return (entry.categoryIds||[]).map(id=>state.categories.find(c=>c.id===id)?.name).filter(Boolean).join(' · ')||entry.format||'Senza categoria';}
 function statusName(id){return STATUSES.find(s=>s.id===id)?.short||'Da vedere';}
 function render(){
+  const libraryEntries=uniqueEntries(state.entries);
+  const groups=duplicateGroups(state.entries);
+  $('duplicateBanner').hidden=groups.length===0;
+  $('duplicateText').textContent=groups.length===1?'Sono state trovate copie dello stesso titolo. Verifica quale scheda conservare.':`Sono stati trovati ${groups.length} gruppi di titoli duplicati. Verifica quale scheda conservare.`;
+  $('hero').hidden=state.page==='explore';$('library').hidden=state.page==='explore';$('explore').hidden=state.page!=='explore';
+  $('navExplore').classList.toggle('active',state.page==='explore');
   const nav=[{id:'all',label:'La mia cineteca',icon:'▦'},...STATUSES.map(s=>({id:s.id,label:s.label,icon:s.icon}))];
-  $('statusNav').innerHTML=nav.map(n=>`<button class="nav-item ${state.status===n.id?'active':''}" data-status="${n.id}"><span class="nav-symbol">${n.icon}</span><span>${esc(n.label)}</span>${n.id==='all'?`<small class="nav-count">${state.entries.length}</small>`:''}</button>`).join('');
-  $('categoryNav').innerHTML=state.categories.map(c=>`<div class="cat-item ${state.category===c.id?'active':''}" style="--dot:${c.color}"><button class="cat-item-main" data-category="${esc(c.id)}" title="Mostra ${esc(c.name)}" style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;background:none;border:0;text-align:left;padding:0;color:inherit"><span class="cat-dot"></span><span class="cat-title">${esc(c.name)}</span><small class="nav-count">${state.entries.filter(e=>(e.categoryIds||[]).includes(c.id)).length}</small></button><button class="cat-action" data-category-actions="${esc(c.id)}" title="Gestisci ${esc(c.name)}" aria-label="Gestisci ${esc(c.name)}">⋯</button></div>`).join('');
+  $('statusNav').innerHTML=nav.map(n=>`<button class="nav-item ${state.page==='library'&&state.status===n.id?'active':''}" data-status="${n.id}"><span class="nav-symbol">${n.icon}</span><span>${esc(n.label)}</span>${n.id==='all'?`<small class="nav-count">${libraryEntries.length}</small>`:''}</button>`).join('');
+  $('categoryNav').innerHTML=state.categories.map(c=>`<div class="cat-item ${state.category===c.id?'active':''}" style="--dot:${c.color}"><button class="cat-item-main" data-category="${esc(c.id)}" title="Mostra ${esc(c.name)}" style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;background:none;border:0;text-align:left;padding:0;color:inherit"><span class="cat-dot"></span><span class="cat-title">${esc(c.name)}</span><small class="nav-count">${libraryEntries.filter(e=>(e.categoryIds||[]).includes(c.id)).length}</small></button><button class="cat-action" data-category-actions="${esc(c.id)}" title="Gestisci ${esc(c.name)}" aria-label="Gestisci ${esc(c.name)}">⋯</button></div>`).join('');
   $('filterPills').innerHTML=`<button class="pill ${state.category==='all'?'active':''}" data-category="all">Tutti</button>`+state.categories.map(c=>`<button class="pill ${state.category===c.id?'active':''}" data-category="${esc(c.id)}">${esc(c.name)}</button>`).join('');
-  const shown=filteredEntries(state.entries,{status:state.status,category:state.category,query:state.query,sort:state.sort});
+  const shown=filteredEntries(libraryEntries,{status:state.status,category:state.category,query:state.query,sort:state.sort});
   const selectedCat=state.categories.find(c=>c.id===state.category);
   $('sectionTitle').innerHTML=selectedCat?`Categoria <em>${esc(selectedCat.name)}</em>`:state.status==='all'?'La tua <em>cineteca</em>':`${esc(statusName(state.status))}<em>.</em>`;
   $('sectionSubtitle').textContent=`${shown.length} ${shown.length===1?'titolo':'titoli'} ${state.query?'trovati':'nella selezione'}`;
@@ -64,17 +72,18 @@ function render(){
     return `<article class="media-card" data-edit="${esc(entry.id)}" role="button" tabindex="0" aria-label="Modifica ${esc(entry.title)}"><div class="poster">${poster}<span class="rating-badge">${formatScore(entry)}</span><span class="poster-status">${state.status==='all'?esc(statusName(entry.status)):esc(entry.format)}</span></div><div class="card-bottom"><div><strong>${esc(entry.title)}</strong><p>${esc(categoryLabel(entry))}</p></div><button class="card-edit" title="Modifica" data-edit="${esc(entry.id)}" aria-label="Modifica ${esc(entry.title)}">✎</button></div></article>`;
   }).join('');
   $('emptyState').hidden=shown.length>0;$('libraryCards').hidden=shown.length===0;
-  $('emptyTitle').textContent=state.entries.length===0?'Qui iniziano le tue storie.':'Nessun titolo in questa selezione.';
-  $('emptyMessage').textContent=state.entries.length===0?'Aggiungi il tuo primo titolo: la sua locandina arriverà automaticamente da TMDB.':'Prova un altro filtro oppure aggiungi un nuovo titolo.';
+  $('emptyTitle').textContent=libraryEntries.length===0?'Qui iniziano le tue storie.':'Nessun titolo in questa selezione.';
+  $('emptyMessage').textContent=libraryEntries.length===0?'Aggiungi il tuo primo titolo: la sua locandina arriverà automaticamente da TMDB.':'Prova un altro filtro oppure aggiungi un nuovo titolo.';
   const top=sortedEntries(state.entries).find(e=>typeof e.ratingScore==='number');
   $('heroFeature').hidden=!top;if(top){$('topTitle').textContent=top.title;$('topRating').textContent=top.ratingLabel||''}
   const name=state.user?.email|| (state.mode==='demo'?'Modalità demo':'Il mio spazio');
   $('profileName').textContent=name;$('profileSub').textContent=state.mode==='cloud'?'Sincronizzato con Firebase':state.mode==='demo'?'Dati solo in questa demo':'Le tue storie, ovunque';
   $('avatar').textContent=name.slice(0,1).toUpperCase();$('userBtn').textContent=name.slice(0,1).toUpperCase();
   $('logoutBtn').hidden=state.mode==='startup';
+  if(state.page==='explore')renderExploreCards();
 }
-function setStatus(id){state.status=id;closeDrawer();render();}
-function setCategory(id){state.category=id;closeDrawer();render();}
+function setStatus(id){state.page='library';state.status=id;closeDrawer();render();}
+function setCategory(id){state.page='library';state.category=id;closeDrawer();render();}
 function entryId(id){return state.entries.find(x=>x.id===id);}
 function catId(id){return state.categories.find(x=>x.id===id);}
 
@@ -128,11 +137,14 @@ async function searchTmdbDebounced(ev){
       const results=(json.results||[]).filter(r=>r.media_type==='movie'||r.media_type==='tv').slice(0,12);
       if(!results.length){box.innerHTML='<div class="help" style="padding:12px">Nessun risultato. Puoi inserire il titolo manualmente.</div>';return}
       box.innerHTML=results.map((r,i)=>{const title=r.title||r.name||r.original_title||r.original_name||'';const year=(r.release_date||r.first_air_date||'').slice(0,4);const poster=r.poster_path?`https://image.tmdb.org/t/p/w92${r.poster_path}`:'';
-        return `<button class="tmdb-result" type="button" data-result-index="${i}">${poster?`<img loading="lazy" src="${esc(poster)}" alt="">`:'<span class="result-placeholder">◈</span>'}<span><strong>${esc(title)}</strong><small>${r.media_type==='tv'?'Serie TV':'Film'} · ${esc(year||'Anno sconosciuto')}${r.original_name&&r.original_name!==title?' · '+esc(r.original_name):''}</small></span></button>`;
+        const found=findDuplicate(state.entries,{title,originalTitle:r.original_title||r.original_name||'',year,format:r.media_type==='movie'?'Film':'Serie TV',tmdbId:r.id,tmdbMediaType:r.media_type});
+        return `<button class="tmdb-result ${found?'tmdb-already':''}" type="button" data-result-index="${i}">${poster?`<img loading="lazy" src="${esc(poster)}" alt="">`:'<span class="result-placeholder">◈</span>'}<span><strong>${esc(title)}</strong><small>${r.media_type==='tv'?'Serie TV':'Film'} · ${esc(year||'Anno sconosciuto')}${r.original_name&&r.original_name!==title?' · '+esc(r.original_name):''}</small></span>${found?'<span class="already-mark">✓ Già nella cineteca</span>':''}</button>`;
       }).join('');
       box.querySelectorAll('[data-result-index]').forEach(btn=>btn.onclick=()=>{
         const r=results[Number(btn.dataset.resultIndex)];
         const title=r.title||r.name||r.original_title||r.original_name||'';
+        const existing=findDuplicate(state.entries,{title,originalTitle:r.original_title||r.original_name||'',year:(r.release_date||r.first_air_date||'').slice(0,4),format:r.media_type==='movie'?'Film':'Serie TV',tmdbId:r.id,tmdbMediaType:r.media_type},currentEditId);
+        if(existing){showExisting(existing);return;}
         state.selectedTmdb={tmdbId:r.id,tmdbMediaType:r.media_type,posterPath:r.poster_path||'',originalTitle:r.original_title||r.original_name||''};
         $('entryTitle').value=title;$('entryYear').value=(r.release_date||r.first_air_date||'').slice(0,4);
         $('entryFormat').value=r.media_type==='movie'?'Film':'Serie TV';
@@ -157,12 +169,94 @@ async function saveEntry(event){
   event.preventDefault();if(state.busy)return;
   const old=currentEditId?entryId(currentEditId):null;
   try{
-    const data=readEntryForm(old);if(!data.categoryIds.length&&state.categories.length) toast('Puoi anche scegliere una o più categorie.','warn');
-    const id=old?.id||slugId('title');
-    await writeRecord('entries',id,data);
+    const data=readEntryForm(old);
+    if(!data.categoryIds.length&&state.categories.length)toast('Puoi anche scegliere una o più categorie.','warn');
+    const found=findDuplicate(state.entries,data,old?.id);
+    if(found){if(old){showExisting(found,'Questa modifica renderebbe identiche due schede diverse. Modifica invece quella esistente.');}
+      else showExisting(found,'',data,true);
+      return;
+    }
+    state.busy=true;
+    await saveUniqueEntry(data,old);
     closeModal(true);toast(old?'Titolo aggiornato.':'Titolo aggiunto alla cineteca.');
-  }catch(err){toast(showError(err),'error')}
+  }catch(err){await handleUniqueError(err,()=>readEntryForm(old));}
+  finally{state.busy=false;}
 }
+
+function valueForField(field,value){
+  if(field==='status')return statusName(value);
+  if(field==='categoryIds')return (value||[]).map(c=>state.categories.find(x=>x.id===c)?.name||c).join(', ')||'Nessuna';
+  return String(value??'').trim()||'—';
+}
+function showExisting(existing,message='',draft=null,allowReplace=false){
+  const changed=draft?changedFields(existing,draft):[];
+  const conflict=allowReplace&&changed.length>0;
+  const names={title:'Titolo',year:'Anno',format:'Formato',status:'Stato',ratingLabel:'Voto',notes:'Note',categoryIds:'Categorie'};
+  const rows=changed.map(f=>`<tr><th>${esc(names[f]||f)}</th><td>${esc(valueForField(f,existing[f]))}</td><td>${esc(valueForField(f,draft[f]))}</td></tr>`).join('');
+  modal({kind:'existing',kicker:conflict?'CONFLITTO DI SALVATAGGIO':'TITOLO GIÀ PRESENTE',
+    title:conflict?'Quale versione vuoi conservare?':'Questo titolo è già nella cineteca',
+    intro:message||(conflict?'FRAME non creerà copie: puoi mantenere la scheda attuale o sostituirne i dati.':'Non verrà inserito una seconda volta.'),
+    body:`<div class="wide-body"><div class="existing-head"><span class="already-mark">✓ Già nella cineteca</span><strong>${esc(existing.title)}</strong><span>${esc(statusName(existing.status))}${existing.ratingLabel?' · ★ '+esc(existing.ratingLabel):''}</span></div>
+    ${conflict?`<div class="conflict-scroll"><table class="conflict-table"><thead><tr><th>Campo</th><th>Già salvato</th><th>Nuovo</th></tr></thead><tbody>${rows}</tbody></table></div>`:''}
+    <div class="form-actions conflict-actions"><button class="secondary-button" id="keepExisting">${conflict?'Mantieni la versione attuale':'Chiudi'}</button><button class="outline-button" id="editExisting">Apri scheda esistente</button>${conflict?'<button class="accent-button" id="replaceExisting">Salva i nuovi dati</button>':''}</div></div>`});
+  $('keepExisting').onclick=()=>closeModal();
+  $('editExisting').onclick=()=>openEntry(existing.id);
+  if(conflict)$('replaceExisting').onclick=async()=>{
+    if(state.busy)return;
+    state.busy=true;
+    try{
+      // Conserva l'ID del titolo e la data originale; non aggiunge una seconda locandina.
+      const updated={...draft,createdMs:existing.createdMs,
+        originalTitle:draft.originalTitle||existing.originalTitle||'',
+        posterPath:draft.posterPath||existing.posterPath||'',
+        tmdbId:draft.tmdbId||existing.tmdbId||null,
+        tmdbMediaType:draft.tmdbMediaType||existing.tmdbMediaType||'',
+        demoPoster:draft.demoPoster||existing.demoPoster||''};
+      await saveUniqueEntry(updated,existing);
+      closeModal(true);toast('Scheda esistente aggiornata. Nessun duplicato creato.');
+    }catch(err){toast(showError(err),'error');}finally{state.busy=false;}
+  };
+}
+async function handleUniqueError(err,getDraft){
+  if(err?.duplicateEntryId){
+    const existing=entryId(err.duplicateEntryId)||await loadEntryById(err.duplicateEntryId);
+    if(existing){if(!entryId(existing.id))state.entries.push(existing);showExisting(existing,'Il titolo è stato salvato anche da un altro dispositivo.',getDraft?.(),true);return;}
+  }
+  toast(showError(err),'error');
+}
+async function loadEntryById(id){
+  if(state.mode!=='cloud'||!state.user)return null;
+  const fs=state.sdk.fs;const snap=await fs.getDoc(fs.doc(state.db,'users',state.user.uid,'entries',id));
+  return snap.exists()?{id:snap.id,...snap.data()}:null;
+}
+async function saveUniqueEntry(data,old=null){
+  if(state.mode==='demo'){
+    const duplicate=findDuplicate(state.entries,data,old?.id);
+    if(duplicate){const error=new Error('Titolo già salvato.');error.duplicateEntryId=duplicate.id;throw error;}
+    await writeRecord('entries',old?.id||slugId('title'),data);return;
+  }
+  if(state.mode!=='cloud'||!state.user)throw new Error('Effettua prima l’accesso.');
+  if(state.listenersReady!==3)throw new Error('Caricamento della cineteca in corso. Riprova quando la sincronizzazione è completa.');
+  const fs=state.sdk.fs,uid=state.user.uid,id=old?.id||slugId('title');
+  const newKey=await workKey(data),oldKey=old?await workKey(old):null;
+  const doc=fs.doc(state.db,'users',uid,'entries',id);
+  const index=fs.doc(state.db,'users',uid,'entryKeys',newKey);
+  const oldIndex=oldKey&&oldKey!==newKey?fs.doc(state.db,'users',uid,'entryKeys',oldKey):null;
+  await fs.runTransaction(state.db,async tx=>{
+    const matched=await tx.get(index);
+    const prior=oldIndex?await tx.get(oldIndex):null;
+    if(matched.exists()&&matched.data().entryId!==id){
+      const otherId=matched.data().entryId;
+      const other=await tx.get(fs.doc(state.db,'users',uid,'entries',otherId));
+      if(other.exists()){const error=new Error('Il titolo è già registrato.');error.duplicateEntryId=otherId;throw error;}
+      // Indice rimasto da una precedente eliminazione: ora è sicuro riutilizzarlo.
+    }
+    tx.set(doc,data);
+    tx.set(index,{entryId:id});
+    if(oldIndex&&prior.exists()&&prior.data().entryId===id)tx.delete(oldIndex);
+  });
+}
+
 async function deleteEntry(entry){
   if(!confirm(`Eliminare «${entry.title}»? Questa operazione rimuove solo questo titolo.`))return;
   try{await removeRecord('entries',entry.id);closeModal(true);toast('Titolo eliminato.')}catch(err){toast(showError(err),'error')}
@@ -191,6 +285,19 @@ async function writeRecord(collectionName,id,data){
 }
 async function removeRecord(collectionName,id){
   if(state.mode==='demo'){state[collectionName==='entries'?'entries':'categories']=state[collectionName==='entries'?'entries':'categories'].filter(x=>x.id!==id);render();return}
+  if(collectionName==='entries'){
+    const existing=entryId(id);const fs=state.sdk.fs,uid=state.user.uid;
+    const rec=fs.doc(state.db,'users',uid,'entries',id);
+    const indexKey=existing?await workKey(existing):null;
+    if(indexKey){
+      const index=fs.doc(state.db,'users',uid,'entryKeys',indexKey);
+      await fs.runTransaction(state.db,async tx=>{
+        const ix=await tx.get(index);
+        tx.delete(rec);
+        if(ix.exists()&&ix.data().entryId===id)tx.delete(index);
+      });return;
+    }
+  }
   await state.sdk.fs.deleteDoc(state.sdk.fs.doc(state.db,'users',state.user.uid,collectionName,id));
 }
 function openCategory(id=null,returnTo='manage'){
@@ -260,21 +367,114 @@ function openBackup(){
     const file=$('importBackup').files?.[0];if(!file){toast('Scegli prima un file JSON.','warn');return}
     if(file.size>8*1024*1024){toast('Backup troppo grande (max 8 MB).','error');return}
     try{const data=validateBackup(JSON.parse(await file.text()));
-      if(!confirm(`Importare ${data.entries.length} titoli e ${data.categories.length} categorie? I titoli con lo stesso ID verranno aggiornati.`))return;
+      if(!confirm(`Importare fino a ${data.entries.length} titoli e ${data.categories.length} categorie? I titoli già presenti non verranno sovrascritti: quelli uguali saranno saltati, quelli con dati differenti andranno modificati direttamente nella cineteca.`))return;
       $('doImport').disabled=true;
+      if(state.mode==='cloud'&&state.listenersReady!==3)throw new Error('Attendi la sincronizzazione completa prima di importare.');
       if(state.mode==='demo'){
         for(const c of data.categories){const i=state.categories.findIndex(x=>x.id===c.id);if(i<0)state.categories.push(c);else state.categories[i]=c;}
-        for(const e of data.entries){const i=state.entries.findIndex(x=>x.id===e.id);if(i<0)state.entries.push(e);else state.entries[i]=e;}
       }else{
         const fs=state.sdk.fs;
-        const jobs=[...data.categories.map(c=>({collection:'categories',data:c})),...data.entries.map(e=>({collection:'entries',data:e}))];
-        for(let i=0;i<jobs.length;i+=350){const batch=fs.writeBatch(state.db);for(const job of jobs.slice(i,i+350)){
-          const {id,...payload}=job.data;batch.set(fs.doc(state.db,'users',state.user.uid,job.collection,id),payload);
-        }await batch.commit();}
+        for(const c of data.categories){const {id,...payload}=c;
+          await fs.setDoc(fs.doc(state.db,'users',state.user.uid,'categories',id),payload);}
       }
-      toast(`Importati ${data.entries.length} titoli e ${data.categories.length} categorie.`);closeModal(true);render();
+      let imported=0,skipped=0,failed=0;const known=[...state.entries];
+      for(const incoming of data.entries){
+        const prev=findDuplicate(known,incoming)||known.find(x=>x.id===incoming.id);
+        if(prev){skipped++;continue;}
+        try{
+          // Per evitare collisioni tra ID di backup e ID già occupati, genera sempre un nuovo ID.
+          const {id:_id,...record}=incoming;
+          await saveUniqueEntry(record);
+          known.push({...record,id:slugId('import-preview')});imported++;
+        }catch(err){if(err.duplicateEntryId)skipped++;else{failed++;console.warn('Importazione titolo fallita',err);}}
+      }
+      closeModal(true);render();
+      toast(`${imported} nuovi titoli importati · ${skipped} duplicati o già presenti non modificati${failed?' · '+failed+' errori':''}.`,failed?'warn':'info');
     }catch(err){toast('Importazione fallita: '+showError(err),'error')}finally{if($('doImport'))$('doImport').disabled=false}
   };
+}
+function startExplore(){
+  state.page='explore';closeDrawer();render();
+  if(!state.explore.page)loadExplore(true);
+  $('explore').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function renderExploreCards(){
+  const ex=state.explore;const panel=$('exploreCards');
+  if(!panel)return;
+  panel.innerHTML=ex.items.map(item=>{
+    const existing=findDuplicate(state.entries,item);
+    const poster=`<span class="explore-no-poster">${esc(item.title)}</span>`+(item.posterPath?`<img loading="lazy" src="https://image.tmdb.org/t/p/w342${esc(item.posterPath)}" alt="" onerror="this.remove()">`:'');
+    return `<button type="button" class="explore-card" data-explore-open="${esc(item.tmdbMediaType)}_${item.tmdbId}"><span class="explore-poster">${poster}${existing?'<span class="explore-saved">✓ Salvato</span>':''}</span><span class="explore-card-meta"><strong>${esc(item.title)}</strong><small>${item.tmdbMediaType==='tv'?'Serie TV':'Film'} · ${esc(item.year||'Anno n.d.')} ${item.voteCount?' · ★ '+item.score.toFixed(1):''}</small></span></button>`;
+  }).join('');
+  $('exploreLoading').hidden=!ex.loading;
+  $('exploreEmpty').hidden=ex.loading||ex.items.length>0;
+  $('exploreMore').hidden=!ex.items.length||!ex.hasMore;
+  $('exploreMore').disabled=ex.loading;
+  $('exploreCount').textContent=ex.items.length?`${ex.items.length} titoli disponibili${ex.hasMore?' · altri risultati disponibili':''}`:'Cerca o esplora il catalogo TMDB';
+}
+async function loadExplore(reset=false){
+  const ex=state.explore;
+  if(!tmdbReady){$('exploreError').textContent='Configura la chiave TMDB in config.js per utilizzare Esplora.';return;}
+  if(ex.loading&&!reset)return;
+  if(ex.controller)ex.controller.abort();
+  if(reset){ex.items=[];ex.page=0;ex.hasMore=true;}
+  const page=ex.page+1;const seq=++ex.requestId;
+  ex.controller=new AbortController();ex.loading=true;$('exploreError').textContent='';renderExploreCards();
+  try{
+    const result=await browseTMDB(TMDB_API_KEY,ex,page,ex.controller.signal);
+    if(seq!==ex.requestId)return;
+    const previous=new Set(ex.items.map(x=>x.tmdbMediaType+':'+x.tmdbId));
+    ex.items.push(...result.items.filter(x=>!previous.has(x.tmdbMediaType+':'+x.tmdbId)));
+    ex.hasMore=result.hasMore&&page<500;ex.page=page;
+  }catch(err){if(seq===ex.requestId&&err.name!=='AbortError')$('exploreError').textContent=showError(err);}
+  finally{if(seq===ex.requestId){ex.loading=false;renderExploreCards();}}
+}
+function openExploreDetail(type,id){
+  const item=state.explore.items.find(x=>x.tmdbMediaType===type&&x.tmdbId===Number(id));if(!item)return;
+  const existing=findDuplicate(state.entries,item);
+  const poster=item.posterPath?`<img src="https://image.tmdb.org/t/p/w342${esc(item.posterPath)}" alt="Locandina">`:'';
+  modal({kind:'explore-detail',kicker:'ESPLORA IL CATALOGO',title:item.title,
+    intro:`${type==='tv'?'Serie TV':'Film'} · ${esc(item.year||'Anno non disponibile')}${item.voteCount?' · ★ '+item.score.toFixed(1)+'/10 su TMDB':''}`,
+    body:`<div class="explore-detail">${poster}<div><p>${esc(item.overview||'Trama non disponibile su TMDB in italiano.')}</p>${existing?`<div class="existing-head"><span class="already-mark">✓ Già nella cineteca</span><span>${esc(statusName(existing.status))}${existing.ratingLabel?' · Il tuo voto: '+esc(existing.ratingLabel):''}</span></div>`:''}<div class="form-actions"><button class="secondary-button" id="exploreDetailBack">Chiudi</button>${existing?'<button class="accent-button" id="exploreDetailEdit">Apri scheda esistente</button>':'<button class="accent-button" id="exploreDetailAdd">＋ Aggiungi ai Da vedere</button>'}</div></div></div>`});
+  $('exploreDetailBack').onclick=closeModal;
+  if(existing)$('exploreDetailEdit').onclick=()=>openEntry(existing.id);
+  else $('exploreDetailAdd').onclick=async()=>{
+    if(!requireApp()||state.busy)return;
+    const concurrent=findDuplicate(state.entries,item);
+    if(concurrent){showExisting(concurrent);return;}
+    const categories=state.categories.filter(c=>
+      (item.genreIds.includes(16)&&c.name.toLocaleLowerCase('it').includes('anime'))||
+      (type==='movie'&&c.name.toLocaleLowerCase('it')==='film')).map(c=>c.id);
+    const entry=normalizeEntry({title:item.title,originalTitle:item.originalTitle,year:item.year,
+      format:type==='movie'?'Film':item.genreIds.includes(16)&&item.originalLanguage==='ja'?'Anime':'Serie TV',
+      tmdbId:item.tmdbId,tmdbMediaType:type,posterPath:item.posterPath,status:'planned',ratingLabel:'',categoryIds:categories});
+    state.busy=true;
+    try{await saveUniqueEntry(entry);closeModal(true);toast('Aggiunto ai Da vedere.');render();}
+    catch(err){await handleUniqueError(err,()=>entry);}
+    finally{state.busy=false;}
+  };
+}
+function resolveExistingDuplicates(){
+  if(!requireApp())return;
+  const group=duplicateGroups(state.entries)[0];
+  if(!group){toast('Nessun duplicato da risolvere.');return;}
+  modal({kind:'duplicates',kicker:'PULIZIA SICURA',title:'Scegli quale scheda conservare',
+    intro:`Sono presenti ${group.length} schede di «${group[0].title}». Esamina i dati: nessuna scheda verrà eliminata senza la tua scelta.`,
+    body:`<div class="wide-body"><div class="duplicate-choices">${group.map(e=>`<div class="duplicate-choice"><strong>${esc(e.title)} ${e.year?'('+esc(e.year)+')':''}</strong><p>Stato: ${esc(statusName(e.status))} · Voto: ${esc(e.ratingLabel||'nessuno')} · ${e.categoryIds?.length||0} categorie</p><p>Note: ${esc(e.notes||'nessuna')}</p><button class="outline-button" data-keep-duplicate="${esc(e.id)}">Conserva questa, elimina le altre</button></div>`).join('')}</div><div class="form-actions"><button class="secondary-button" id="closeDuplicateReview">Annulla</button></div></div>`});
+  $('closeDuplicateReview').onclick=closeModal;
+  $('modalBody').querySelectorAll('[data-keep-duplicate]').forEach(button=>button.onclick=async()=>{
+    const keep=group.find(x=>x.id===button.dataset.keepDuplicate);
+    if(!keep)return;
+    if(!confirm(`Conservare la scheda di «${keep.title}» (voto ${keep.ratingLabel||'assente'}) ed eliminare definitivamente le altre ${group.length-1} schede? Le note/voti delle altre andranno persi. Prima è consigliato scaricare un backup JSON.`))return;
+    if(state.busy)return;state.busy=true;
+    try{
+      for(const e of group.filter(x=>x.id!==keep.id))await removeRecord('entries',e.id);
+      // La chiave stabile verrà ricostruita sulla scheda conservata.
+      await saveUniqueEntry((({id,...rest})=>rest)(keep),keep);
+      closeModal(true);toast('Duplicato risolto: è rimasta una sola scheda.');
+      // Le eventuali altre coppie rimangono segnalate: nessuna scelta automatica.
+    }catch(err){toast(showError(err),'error')}finally{state.busy=false;}
+  });
 }
 function openAbout(){
   modal({kind:'about',kicker:'INFORMAZIONI',title:'FRAME e i suoi dati',intro:'Una cineteca personale gratuita, senza pubblicità e senza abbonamenti.',body:`<div class="credits"><p>FRAME salva titoli, voti, categorie, stati e note nel tuo account Firebase. Le locandine e i metadati vengono richiesti al catalogo TMDB.</p><a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer" title="The Movie Database"><img class="tmdb-logo" src="https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg" alt="Logo ufficiale TMDB" loading="lazy"></a><p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p><p><a href="https://www.themoviedb.org/about/logos-attribution" target="_blank" rel="noopener noreferrer">Crediti TMDB e logo ufficiale</a> · <a href="https://developer.themoviedb.org/docs/faq" target="_blank" rel="noopener noreferrer">Condizioni d'uso API</a></p><div class="callout">L'app è progettata per utilizzo <strong>personale non commerciale</strong>, usando GitHub Pages e Firebase Spark entro i rispettivi limiti gratuiti. Non possiamo garantire che i fornitori mantengano invariati i loro piani nel futuro.</div><button class="secondary-button" id="aboutClose">Chiudi</button></div>`});
@@ -362,10 +562,12 @@ async function logout(){
 }
 function bind(){
   $('openDrawer').onclick=openDrawer;$('closeDrawer').onclick=closeDrawer;$('drawerScrim').onclick=closeDrawer;
+  $('navExplore').onclick=startExplore;
+  $('fixDuplicates').onclick=resolveExistingDuplicates;
   $('statusNav').onclick=e=>{const btn=e.target.closest('[data-status]');if(btn)setStatus(btn.dataset.status)};
   $('categoryNav').onclick=e=>{const actions=e.target.closest('[data-category-actions]');if(actions){openManageCategories();return}const btn=e.target.closest('[data-category]');if(btn)setCategory(btn.dataset.category)};
   $('filterPills').onclick=e=>{const btn=e.target.closest('[data-category]');if(btn)setCategory(btn.dataset.category)};
-  $('searchAll').oninput=e=>{state.query=e.target.value;render()};
+  $('searchAll').oninput=e=>{state.page='library';state.query=e.target.value;render()};
   const srch=$('searchAll').closest('.header-search');srch.onclick=()=>srch.classList.add('expanded');
   $('searchAll').onblur=()=>{if(!$('searchAll').value)srch.classList.remove('expanded')};
   $('sortSelect').onchange=e=>{state.sort=e.target.value;render()};
@@ -376,6 +578,18 @@ function bind(){
   $('backupBtn').onclick=openBackup;$('aboutBtn').onclick=openAbout;$('footerCredits').onclick=e=>{e.preventDefault();openAbout()};
   $('logoutBtn').onclick=logout;$('userBtn').onclick=()=>state.mode==='cloud'?toast('Account: '+state.user.email):state.mode==='demo'?toast('Stai usando la demo locale.'):openAuth(configured?'login':'setup');
   $('libraryCards').onclick=e=>{const item=e.target.closest('[data-edit]');if(item)openEntry(item.dataset.edit)};
+  $('exploreSearch').oninput=e=>{
+    state.explore.query=e.target.value;clearTimeout(state.searchTimer);
+    state.searchTimer=setTimeout(()=>loadExplore(true),430);
+  };
+  $('exploreSearch').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();clearTimeout(state.searchTimer);loadExplore(true)}};
+  $('exploreSearchBtn').onclick=()=>{clearTimeout(state.searchTimer);loadExplore(true)};
+  for(const [field,id] of [['media','exploreMedia'],['genre','exploreGenre'],['sort','exploreSort'],['year','exploreYear']]){
+    $(id).onchange=e=>{state.explore[field]=e.target.value;loadExplore(true)};
+  }
+  $('exploreMore').onclick=()=>loadExplore(false);
+  $('exploreCards').onclick=e=>{const b=e.target.closest('[data-explore-open]');if(!b)return;
+    const [type,id]=b.dataset.exploreOpen.split('_');openExploreDetail(type,id)};
   $('libraryCards').onkeydown=e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.media-card')){e.preventDefault();openEntry(e.target.dataset.edit)}};
   $('closeModal').onclick=()=>closeModal();$('modalBackdrop').onclick=e=>{if(e.target===$('modalBackdrop'))closeModal()};
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDrawer();closeModal()}});
