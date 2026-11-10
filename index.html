@@ -22,6 +22,7 @@
       <div class="side-heading"><span>Le mie categorie</span><button class="small-icon" id="manageCategories" title="Gestisci categorie" aria-label="Gestisci categorie">⚙</button></div>
       <nav id="categoryNav" class="nav-stack categories-nav"></nav>
       <button class="add-category" id="addCategorySide">＋ Crea una categoria</button>
+      <nav class="nav-stack"><button class="nav-item" id="adminNav" hidden><span class="nav-symbol">♙</span><span>Gestione utenti</span><span class="nav-count">ADMIN</span></button></nav>
       <div class="sidebar-spacer"></div>
       <button class="sidebar-link" id="backupBtn">⇩ <span>Backup e importazione</span></button>
       <button class="sidebar-link" id="aboutBtn">ⓘ <span>Info e crediti</span></button>
@@ -55,6 +56,13 @@
         <div class="empty-state" id="exploreEmpty" hidden><h3>Nessun titolo da mostrare.</h3><p>Prova filtri differenti o un altro titolo.</p></div>
         <div class="explore-more-wrap"><button class="outline-button" id="exploreMore" hidden>Mostra altri titoli ↓</button></div>
         <p class="explore-disclaimer">Trame, valutazioni e locandine provengono da TMDB. La tua cineteca e i tuoi voti sono separati.</p>
+      </section>
+      <section class="admin-panel" id="adminPanel" hidden>
+        <div class="section-top"><div><div class="kicker">AREA RISERVATA ALL’AMMINISTRATORE</div><h2>Gestione <em>utenti</em></h2><p class="section-subtitle" id="adminSummary">Caricamento delle richieste...</p></div></div>
+        <div class="access-admin-note">Solo il tuo account amministratore può approvare, rifiutare o revocare gli accessi. Gli utenti approvati mantengono ciascuno una cineteca personale e separata.</div>
+        <h3 class="access-heading">Richieste da approvare</h3><div class="access-list" id="adminPending"></div>
+        <h3 class="access-heading">Utenti autorizzati</h3><div class="access-list" id="adminApproved"></div>
+        <h3 class="access-heading">Rifiutati o revocati</h3><div class="access-list" id="adminOthers"></div>
       </section>
       <section class="library" id="library">
         <div class="section-top"><div><div class="kicker">I tuoi titoli, i tuoi voti</div><h2 id="sectionTitle">La tua <em>cineteca</em></h2><p class="section-subtitle" id="sectionSubtitle"></p></div><div class="section-actions"><button class="outline-button" id="quickPlanned">Solo da vedere</button><button class="accent-button" id="addEntryBtn">＋ Aggiungi titolo</button></div></div>

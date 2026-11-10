@@ -10,7 +10,7 @@ const configured = Object.values(FIREBASE_CONFIG).every(v=>typeof v==='string'&&
 const tmdbReady = typeof TMDB_API_KEY==='string'&&TMDB_API_KEY.length>=8&&!TMDB_API_KEY.includes('INSERISCI');
 const state = { mode:'startup', user:null, entries:[], categories:[], status:'all', category:'all', query:'', sort:'rating-desc',
   unsubs:[], sdk:null, auth:null, db:null, selectedTmdb:null, searchSeq:0, searchTimer:null, busy:false, modalKind:'',
-  initialized:false, listenersReady:0, page:'library', explore:{query:'',media:'all',genre:'',year:'',sort:'popularity.desc',page:0,items:[],hasMore:true,loading:false,requestId:0,controller:null} };
+  initialized:false, listenersReady:0, isAdmin:false, accessStatus:'', accessUnsub:null, adminUnsub:null, accessCreating:false, authGeneration:0, accessCheckInProgress:false, requests:[], page:'library', explore:{query:'',media:'all',genre:'',year:'',sort:'popularity.desc',page:0,items:[],hasMore:true,loading:false,requestId:0,controller:null} };
 const DEMO_ITEMS = [
   {id:'demo-chainsaw',title:'Chainsaw Man',format:'Anime',status:'seen',ratingLabel:'11/10',categoryIds:['anime','fantasy'],demoPoster:'assets/frame_mock_chainsaw.jpg',createdMs:800},
   {id:'demo-alya',title:'Alya Sometimes Hides Her Feelings in Russian',format:'Anime',status:'seen',ratingLabel:'10 e lode',categoryIds:['anime','romance'],demoPoster:'assets/frame_mock_alya.jpg',createdMs:700},
@@ -39,7 +39,7 @@ function modal({kind,title,kicker='LA TUA CINETECA',intro='',body}){
 }
 function closeModal(force=false){
   if(state.busy&&!force)return;
-  if(['login','register','setup','boot'].includes(state.modalKind)&&state.mode!=='demo'&&state.mode!=='cloud')return;
+  if(['login','register','setup','boot','access-pending','access-rejected','access-error'].includes(state.modalKind)&&state.mode!=='demo'&&state.mode!=='cloud')return;
   $('modalBackdrop').hidden=true;state.modalKind='';state.selectedTmdb=null;clearTimeout(state.searchTimer);state.searchSeq++;
 }
 function requireApp(){ if(!['demo','cloud'].includes(state.mode)){toast('Accedi prima di aggiungere titoli.','warn');return false}return true; }
@@ -56,7 +56,11 @@ function render(){
   const groups=duplicateGroups(state.entries);
   $('duplicateBanner').hidden=groups.length===0;
   $('duplicateText').textContent=groups.length===1?'Sono state trovate copie dello stesso titolo. Verifica quale scheda conservare.':`Sono stati trovati ${groups.length} gruppi di titoli duplicati. Verifica quale scheda conservare.`;
-  $('hero').hidden=state.page==='explore';$('library').hidden=state.page==='explore';$('explore').hidden=state.page!=='explore';
+  const adminPage=state.page==='admin'&&state.isAdmin&&state.mode==='cloud';
+  $('hero').hidden=state.page==='explore'||adminPage;$('library').hidden=state.page==='explore'||adminPage;$('explore').hidden=state.page!=='explore';
+  $('adminPanel').hidden=!adminPage;$('adminNav').hidden=!(state.isAdmin&&state.mode==='cloud');
+  $('adminNav').classList.toggle('active',adminPage);
+  $('appShell').inert=!['cloud','demo'].includes(state.mode);
   $('navExplore').classList.toggle('active',state.page==='explore');
   const nav=[{id:'all',label:'La mia cineteca',icon:'▦'},...STATUSES.map(s=>({id:s.id,label:s.label,icon:s.icon}))];
   $('statusNav').innerHTML=nav.map(n=>`<button class="nav-item ${state.page==='library'&&state.status===n.id?'active':''}" data-status="${n.id}"><span class="nav-symbol">${n.icon}</span><span>${esc(n.label)}</span>${n.id==='all'?`<small class="nav-count">${libraryEntries.length}</small>`:''}</button>`).join('');
@@ -80,6 +84,7 @@ function render(){
   $('profileName').textContent=name;$('profileSub').textContent=state.mode==='cloud'?'Sincronizzato con Firebase':state.mode==='demo'?'Dati solo in questa demo':'Le tue storie, ovunque';
   $('avatar').textContent=name.slice(0,1).toUpperCase();$('userBtn').textContent=name.slice(0,1).toUpperCase();
   $('logoutBtn').hidden=state.mode==='startup';
+  if(adminPage)renderAdminPanel();
   if(state.page==='explore')renderExploreCards();
 }
 function setStatus(id){state.page='library';state.status=id;closeDrawer();render();}
@@ -484,18 +489,161 @@ function startDemo(){
   state.mode='demo';state.user=null;state.entries=DEMO_ITEMS.map(e=>({...e,categoryIds:[...e.categoryIds]}));state.categories=DEFAULT_CATEGORIES.map(c=>({...c}));
   closeModal(true);sync('Demo locale','warn');render();toast('Modalità demo: le modifiche non vengono sincronizzate.');
 }
+// La verifica dei permessi viene eseguita anche dal backend tramite Security Rules.
+// Qui controlliamo inoltre l'interfaccia e reagiamo in tempo reale alle revoche.
+function requestAccessMarkup(status){
+  const labels={pending:'La tua richiesta è in attesa',rejected:'Richiesta non approvata',revoked:'Autorizzazione revocata'};
+  const descriptions={
+    pending:'L’amministratore ha ricevuto la tua richiesta. Non devi registrarti nuovamente: quando verrai approvato, la cineteca si aprirà automaticamente.',
+    rejected:'L’amministratore non ha autorizzato il tuo account. Puoi contattarlo per ulteriori informazioni.',
+    revoked:'L’amministratore ha revocato il tuo accesso. I tuoi dati non sono stati cancellati.'
+  };
+  return {kind:status==='pending'?'access-pending':'access-rejected',
+    kicker:'ACCESSO RISERVATO',title:labels[status]||labels.pending,
+    intro:descriptions[status]||descriptions.pending,
+    body:`<div class="auth-container"><div class="callout">Account: <strong>${esc(state.user?.email||'')}</strong><br>Stato: <strong>${esc(status==='pending'?'In attesa':status==='rejected'?'Non approvato':'Revocato')}</strong></div><div class="form-actions"><button class="secondary-button" id="accessLogout" type="button">Esci dall’account</button></div></div>`};
+}
+function showAccessStatus(status){
+  if(state.modalKind==='access-pending'&&status==='pending')return;
+  if(state.modalKind==='access-rejected'&&status!=='pending'){
+    if($('modalTitle').textContent===(status==='revoked'?'Autorizzazione revocata':'Richiesta non approvata'))return;
+  }
+  modal(requestAccessMarkup(status));
+  $('accessLogout').onclick=logout;
+}
+function stopAccessSubscriptions(){
+  for(const key of ['accessUnsub','adminUnsub']){
+    try{state[key]?.()}catch{}state[key]=null;
+  }
+  state.accessCreating=false;state.accessCheckInProgress=false;state.requests=[];
+}
+function clearPrivateData(){
+  stopListeners();state.entries=[];state.categories=[];state.listenersReady=0;
+  state.page='library';state.isAdmin=false;
+}
+function renderAdminPanel(){
+  const total=state.requests.length;
+  const pending=state.requests.filter(r=>r.status==='pending');
+  const approved=state.requests.filter(r=>r.status==='approved');
+  const others=state.requests.filter(r=>['rejected','revoked'].includes(r.status));
+  $('adminSummary').textContent=`${pending.length} in attesa · ${approved.length} autorizzati · ${total} richieste totali`;
+  const rows=(list)=>list.map(r=>{
+    const date=Number.isFinite(r.requestedAt)?new Date(r.requestedAt).toLocaleDateString('it-IT'):'';
+    const statusLabel={pending:'In attesa',approved:'Autorizzato',rejected:'Rifiutato',revoked:'Revocato'}[r.status]||r.status;
+    return `<div class="access-row"><div class="access-person"><strong>${esc(r.email||'Email non disponibile')}</strong><small>${esc(statusLabel)} · Richiesta ${esc(date)} · UID ${esc(r.id.slice(0,9))}…</small></div><div class="access-buttons">
+    ${r.status!=='approved'?`<button class="accent-button" data-access-action="approved" data-access-uid="${esc(r.id)}">Approva</button>`:''}
+    ${r.status==='pending'?`<button class="outline-button" data-access-action="rejected" data-access-uid="${esc(r.id)}">Rifiuta</button>`:''}
+    ${r.status==='approved'?`<button class="outline-button" data-access-action="revoked" data-access-uid="${esc(r.id)}">Revoca</button>`:''}
+    </div></div>`;
+  }).join('');
+  $('adminPending').innerHTML=rows(pending)||'<p class="access-empty">Nessuna richiesta in attesa.</p>';
+  $('adminApproved').innerHTML=rows(approved)||'<p class="access-empty">Non ci sono ancora utenti autorizzati.</p>';
+  $('adminOthers').innerHTML=rows(others)||'<p class="access-empty">Nessun utente rifiutato o revocato.</p>';
+}
+function startAdminSubscription(uid,generation){
+  const fs=state.sdk.fs;
+  state.adminUnsub?.();
+  state.adminUnsub=fs.onSnapshot(fs.collection(state.db,'accessRequests'),snap=>{
+    if(state.user?.uid!==uid||state.authGeneration!==generation||!state.isAdmin)return;
+    state.requests=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0));
+    if(state.page==='admin')renderAdminPanel();
+  },err=>toast('Impossibile leggere le richieste: '+showError(err),'error'));
+}
+async function reviewAccess(uid,status){
+  if(!state.isAdmin||state.mode!=='cloud'||state.busy)return;
+  const selected=state.requests.find(r=>r.id===uid);
+  if(!selected||!['approved','rejected','revoked'].includes(status))return;
+  if(status==='revoked'&&!confirm(`Revocare l’accesso a ${selected.email}? L’utente perderà l’accesso ai dati online, senza cancellarli.`))return;
+  state.busy=true;
+  try{
+    const fs=state.sdk.fs;
+    await fs.updateDoc(fs.doc(state.db,'accessRequests',uid),{status,reviewedAt:Date.now()});
+    toast(status==='approved'?'Utente autorizzato.':status==='rejected'?'Richiesta rifiutata.':'Accesso revocato.');
+  }catch(err){toast(showError(err),'error')}
+  finally{state.busy=false}
+}
+async function activateAccount(uid,generation,admin=false){
+  if(state.user?.uid!==uid||state.authGeneration!==generation)return;
+  if(state.mode==='cloud'&&state.isAdmin===admin)return;
+  state.mode='cloud';state.isAdmin=admin;state.accessStatus='approved';
+  state.entries=[];state.categories=[];state.listenersReady=0;
+  closeModal(true);render();sync('Sincronizzazione...','warn');
+  try{
+    await initProfileIfNeeded(uid);
+    if(state.user?.uid!==uid||state.authGeneration!==generation||state.mode!=='cloud')return;
+    startListeners(uid);
+    if(admin)startAdminSubscription(uid,generation);
+  }catch(err){
+    if(state.user?.uid!==uid||state.authGeneration!==generation)return;
+    sync('Errore database','error');toast(showError(err),'error');
+  }
+}
+function suspendAccount(status){
+  clearPrivateData();state.mode='pending';state.accessStatus=status;
+  sync(status==='pending'?'In attesa di approvazione':'Accesso non autorizzato','warn');
+  render();showAccessStatus(status);
+}
+function watchAccessRequest(user,generation){
+  const fs=state.sdk.fs,uid=user.uid;
+  state.accessUnsub=fs.onSnapshot(fs.doc(state.db,'accessRequests',uid),snap=>{
+    if(state.user?.uid!==uid||state.authGeneration!==generation)return;
+    if(!snap.exists()){
+      suspendAccount('pending');
+      if(!state.accessCreating){
+        state.accessCreating=true;
+        fs.setDoc(fs.doc(state.db,'accessRequests',uid),{
+          email:user.email,requestedAt:Date.now(),status:'pending'
+        }).catch(err=>{
+          if(state.user?.uid===uid&&state.authGeneration===generation){
+            sync('Errore richiesta','error');toast('Richiesta non inviata: '+showError(err),'error');
+          }
+        }).finally(()=>{state.accessCreating=false});
+      }
+      return;
+    }
+    const status=snap.data()?.status;
+    if(status==='approved')activateAccount(uid,generation,false);
+    else suspendAccount(['rejected','revoked'].includes(status)?status:'pending');
+  },err=>{
+    if(state.user?.uid!==uid||state.authGeneration!==generation)return;
+    sync('Errore autorizzazione','error');
+    modal({kind:'access-error',title:'Autorizzazione non verificabile',kicker:'ACCESSO RISERVATO',
+      intro:'Impossibile verificare i permessi su Firebase. Controlla la connessione o contatta l’amministratore.',
+      body:`<div class="auth-container"><p class="error-text">${esc(showError(err))}</p><button class="secondary-button" id="accessLogout">Esci dall’account</button></div>`});
+    $('accessLogout').onclick=logout;
+  });
+}
+async function checkAccountAccess(user,generation){
+  const fs=state.sdk.fs;
+  try{
+    const snap=await fs.getDoc(fs.doc(state.db,'accessConfig','main'));
+    if(state.user?.uid!==user.uid||state.authGeneration!==generation)return;
+    const adminUid=snap.exists()?snap.data()?.adminUid:'';
+    if(typeof adminUid!=='string'||!adminUid.trim())throw new Error('CONFIG_ADMIN_MISSING');
+    if(user.uid===adminUid){await activateAccount(user.uid,generation,true);return;}
+    watchAccessRequest(user,generation);
+  }catch(err){
+    if(state.user?.uid!==user.uid||state.authGeneration!==generation)return;
+    sync('Configurazione accesso','error');
+    const missing=err.message==='CONFIG_ADMIN_MISSING';
+    modal({kind:'access-error',kicker:'ACCESSO RISERVATO',title:missing?'Amministratore da configurare':'Verifica accesso non riuscita',
+      intro:missing?'Il proprietario deve impostare una sola volta il proprio UID in Firestore, nel documento accessConfig/main.':'Non è stato possibile leggere la configurazione di accesso. Verifica la connessione e le regole Firestore.',
+      body:`<div class="auth-container"><p class="error-text">${missing?'Controlla la guida CONFIGURAZIONE_ADMIN.md nello ZIP.':esc(showError(err))}</p><button class="secondary-button" id="accessLogout">Esci dall’account</button></div>`});
+    $('accessLogout').onclick=logout;
+  }
+}
 function authMarkup(kind){
   const register=kind==='register',setup=kind==='setup',boot=kind==='boot';
-  if(setup)return `<div class="auth-container"><div class="callout"><strong>Il codice dell'app è pronto.</strong> Per attivare i tuoi dati condivisi tra dispositivi devi creare un NUOVO progetto Firebase e incollare la sua configurazione nel file <code>config.js</code>, poi pubblicare su un NUOVO repository GitHub.<br>Segui la guida <code>GUIDA_PASSO_PASSO.md</code> contenuta nel progetto completo.</div><div class="form-actions"><button type="button" id="tryDemo" class="accent-button">Prova subito la demo</button></div></div>`;
+  if(setup)return `<div class="auth-container"><div class="callout"><strong>Il codice dell'app è pronto.</strong> Controlla che la configurazione Firebase sia presente nel file <code>config.js</code>. Se hai già pubblicato FRAME, usa il progetto Firebase e il repository GitHub esistenti.<br>Segui la guida <code>CONFIGURAZIONE_ADMIN.md</code> contenuta nello ZIP completo.</div><div class="form-actions"><button type="button" id="tryDemo" class="accent-button">Prova subito la demo</button></div></div>`;
   if(boot)return '<div class="help"><span class="spinner"></span>Connessione a Firebase in corso...</div>';
-  return `<form class="auth-container" id="authForm"><label class="form-label" for="authEmail">Indirizzo email</label><input type="email" class="input" id="authEmail" placeholder="nome@email.it" autocomplete="email" required autofocus><label class="form-label" for="authPassword">Password</label><input type="password" class="input" id="authPassword" placeholder="Almeno 6 caratteri" autocomplete="${register?'new-password':'current-password'}" required minlength="6"><div class="form-actions"><button class="accent-button" type="submit" id="authSubmit">${register?'Crea account':'Accedi'}</button><button type="button" class="secondary-button" id="switchAuth">${register?'Hai già un account?':'Crea un account'}</button></div><div class="tiny-row"><button type="button" class="text-button" id="resetPassword">Password dimenticata?</button><button type="button" class="text-button" id="demoAuth">Prova la demo (senza sincronizzazione)</button></div><p id="authError" class="error-text" role="alert"></p></form>`;
+  return `<form class="auth-container" id="authForm"><label class="form-label" for="authEmail">Indirizzo email</label><input type="email" class="input" id="authEmail" placeholder="nome@email.it" autocomplete="email" required autofocus><label class="form-label" for="authPassword">Password</label><input type="password" class="input" id="authPassword" placeholder="Almeno 6 caratteri" autocomplete="${register?'new-password':'current-password'}" required minlength="6"><div class="form-actions"><button class="accent-button" type="submit" id="authSubmit">${register?'Crea account':'Accedi'}</button><button type="button" class="secondary-button" id="switchAuth">${register?'Hai già un account?':'Crea un account'}</button></div><div class="tiny-row"><button type="button" class="text-button" id="resetPassword">Password dimenticata?</button>${!configured?'<button type="button" class="text-button" id="demoAuth">Prova la demo (senza sincronizzazione)</button>':''}</div><p id="authError" class="error-text" role="alert"></p></form>`;
 }
 function openAuth(kind='login'){
   if(kind==='boot'){modal({kind,title:'Connessione a FRAME',kicker:'ACCOUNT PERSONALE',intro:'La sincronizzazione usa il tuo nuovo Firebase.',body:authMarkup(kind)});return}
   modal({kind,title:kind==='register'?'Crea il tuo account':kind==='setup'?'Configura FRAME':'Bentornato su FRAME',kicker:'IL TUO SPAZIO PERSONALE',intro:kind==='setup'?'Puoi visualizzare la demo anche prima della configurazione.':'Accedi con la stessa email e password da qualsiasi dispositivo.',body:authMarkup(kind)});
   if(kind==='setup'){$('tryDemo').onclick=startDemo;return}
   $('switchAuth').onclick=()=>openAuth(kind==='register'?'login':'register');
-  $('demoAuth').onclick=startDemo;
+  if($('demoAuth'))$('demoAuth').onclick=startDemo;
   $('resetPassword').onclick=async()=>{
     const email=$('authEmail').value.trim();if(!email){$('authError').textContent='Scrivi prima la tua email.';return}
     try{await state.sdk.auth.sendPasswordResetEmail(state.auth,email);toast('Se l’email è registrata, riceverai un link per reimpostare la password.')}catch(err){$('authError').textContent=showError(err)}
@@ -523,13 +671,13 @@ async function startCloud(){
     try{state.db=fs.initializeFirestore(app,{localCache:fs.persistentLocalCache({tabManager:fs.persistentMultipleTabManager()})});}
     catch(err){console.warn('Offline persistence non disponibile; uso cache in memoria.',err);state.db=fs.getFirestore(app)}
     authMod.onAuthStateChanged(state.auth,async user=>{
-      stopListeners();state.user=user;
-      if(!user){state.mode='startup';state.entries=[];state.categories=[];state.listenersReady=0;render();sync('Non connesso','warn');openAuth('login');return}
-      state.mode='cloud';state.entries=[];state.categories=[];state.listenersReady=0;render();sync('Sincronizzazione...','warn');
-      closeModal(true);
-      try{await initProfileIfNeeded(user.uid);startListeners(user.uid)}catch(err){sync('Errore database','error');toast(showError(err),'error')}
+      const generation=++state.authGeneration;
+      stopAccessSubscriptions();clearPrivateData();state.user=user;
+      if(!user){state.mode='startup';render();sync('Non connesso','warn');openAuth('login');return}
+      state.mode='checking';render();sync('Verifica autorizzazione...','warn');openAuth('boot');
+      await checkAccountAccess(user,generation);
     });
-  }catch(err){console.error(err);sync('Errore connessione','error');modal({kind:'setup',title:'Connessione non riuscita',intro:'Controlla la connessione Internet, il file config.js e la guida.',body:`<div class="callout">${esc(showError(err))}</div><button class="accent-button" id="tryDemo">Prova la demo locale</button>`});$('tryDemo').onclick=startDemo;}
+  }catch(err){console.error(err);sync('Errore connessione','error');modal({kind:'access-error',title:'Connessione non riuscita',intro:'Controlla la connessione Internet, il file config.js e la guida.',body:`<div class="callout">${esc(showError(err))}</div><button class="accent-button" id="retryConnection">Riprova la connessione</button>`});$('retryConnection').onclick=startCloud;}
 }
 async function initProfileIfNeeded(uid){
   const fs=state.sdk.fs;const profile=fs.doc(state.db,'users',uid);
@@ -563,6 +711,8 @@ async function logout(){
 function bind(){
   $('openDrawer').onclick=openDrawer;$('closeDrawer').onclick=closeDrawer;$('drawerScrim').onclick=closeDrawer;
   $('navExplore').onclick=startExplore;
+  $('adminNav').onclick=()=>{if(!state.isAdmin||state.mode!=='cloud')return;state.page='admin';closeDrawer();render()};
+  $('adminPanel').onclick=e=>{const button=e.target.closest('[data-access-action]');if(button)reviewAccess(button.dataset.accessUid,button.dataset.accessAction)};
   $('fixDuplicates').onclick=resolveExistingDuplicates;
   $('statusNav').onclick=e=>{const btn=e.target.closest('[data-status]');if(btn)setStatus(btn.dataset.status)};
   $('categoryNav').onclick=e=>{const actions=e.target.closest('[data-category-actions]');if(actions){openManageCategories();return}const btn=e.target.closest('[data-category]');if(btn)setCategory(btn.dataset.category)};

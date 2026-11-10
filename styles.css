@@ -60,3 +60,12 @@
 .duplicate-choice p{font-size:12px;color:#b1bfaf;line-height:1.5}
 @media(max-width:1050px){.explore-filter-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.explore-hero{padding:24px 22px}.explore-filter-row{grid-template-columns:repeat(2,minmax(0,1fr))}.explore-search-wrap{gap:6px;padding:5px 5px 5px 10px}.explore-search-wrap .accent-button{padding:12px}.explore-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.tmdb-result>.already-mark{white-space:normal;font-size:9px}.explore-detail{grid-template-columns:105px 1fr;gap:12px}.duplicate-banner{align-items:flex-start;flex-wrap:wrap}.duplicate-banner .outline-button{margin-left:auto}}
+
+/* FRAME - gestione autorizzazioni (non modifica la cache offline). */
+.admin-panel{padding-bottom:50px}.access-admin-note{padding:16px 19px;border:1px solid #354b38;background:#17221d;border-radius:12px;color:#c7d5c6;font-size:12px;line-height:1.6}
+.access-heading{font:normal 25px/1.2 var(--serif);letter-spacing:-.03em;margin:33px 0 13px;color:var(--paper)}
+.access-list{display:grid;gap:10px}.access-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:17px 20px;border-radius:13px;border:1px solid #2b3a30;background:#151e19}
+.access-person{min-width:0;display:flex;flex-direction:column;gap:7px}.access-person strong{font-size:13px;overflow-wrap:anywhere}.access-person small{font-size:11px;color:#9aac9e;line-height:1.5}
+.access-buttons{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.access-buttons .accent-button,.access-buttons .outline-button{padding:10px 14px;font-size:11px}
+.access-empty{color:#879c8a;padding:10px 4px;font-size:12px}.admin-panel .section-top{margin-top:18px}
+@media(max-width:700px){.access-row{flex-direction:column;align-items:stretch}.access-buttons{justify-content:flex-start}}
