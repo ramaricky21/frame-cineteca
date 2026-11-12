@@ -4,7 +4,7 @@
  */
 'use strict';
 
-const CACHE = 'frame-cineteca-static-v4';
+const CACHE = 'frame-cineteca-static-v5';
 const OWN_CACHES = ['frame-static-v1'];
 const OWN_PREFIX = 'frame-cineteca-static-';
 const SCOPE_URL = new URL(self.registration.scope);

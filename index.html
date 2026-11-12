@@ -44,9 +44,13 @@
           <div class="explore-search-wrap"><span aria-hidden="true">⌕</span><input class="input" type="search" id="exploreSearch" placeholder="Cerca film, serie e anime..." aria-label="Cerca titoli su TMDB"><button class="accent-button" id="exploreSearchBtn" type="button">Cerca</button></div>
           <div class="explore-filter-row">
             <label>Tipo di contenuto<select class="select" id="exploreMedia"><option value="all">Tutti i titoli</option><option value="movie">Film</option><option value="tv">Serie TV</option><option value="anime">Anime (giapponesi)</option></select></label>
-            <label>Genere<select class="select" id="exploreGenre"><option value="">Tutti i generi</option><option value="16">Animazione</option><option value="35">Commedia</option><option value="18">Drammatico</option><option value="80">Crime</option><option value="99">Documentario</option><option value="9648">Mistero</option><option value="10751">Famiglia</option></select></label>
+            <label>Genere<select class="select" id="exploreGenre"><option value="">Tutti i generi</option></select></label>
             <label>Anno<input class="input" id="exploreYear" type="number" min="1900" max="2100" placeholder="Tutti"></label>
-            <label>Ordina per<select class="select" id="exploreSort"><option value="popularity.desc">Più popolari</option><option value="vote_average.desc">Più votati</option><option value="date.desc">Più recenti</option></select></label>
+            <label>Ordina per<select class="select" id="exploreSort"><option value="popularity.desc">Più popolari</option><option value="vote_average.desc">Più votati</option><option value="date.desc">Più recenti</option><option value="random">Consigli casuali ✦</option></select></label>
+          </div>
+          <div class="explore-random-row" id="exploreRandomRow" hidden>
+            <div class="explore-random-copy"><strong>✦ Consigli casuali</strong><small>Un nuovo gruppo di titoli, rispettando tipo di contenuto, genere e anno selezionati.</small></div>
+            <button class="accent-button explore-refresh" id="exploreRefresh" type="button"><span aria-hidden="true">↻</span> Mostra altri consigli</button>
           </div>
         </div>
         <div class="section-top"><div><div class="kicker">TROVA QUALCOSA DI NUOVO</div><h2>Scopri <em>nuovi titoli</em></h2><p class="section-subtitle" id="exploreCount"></p></div></div>

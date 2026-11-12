@@ -2,7 +2,7 @@ import { FIREBASE_CONFIG, TMDB_API_KEY } from './config.js';
 import { DEFAULT_CATEGORIES, STATUSES, FORMATS, PALETTE, parseRating,
   filteredEntries, sortedEntries, slugId, normalizeEntry, cleanCategory, backupPayload, validateBackup } from './data.js';
 import { findDuplicate, duplicateGroups, uniqueEntries, changedFields, workKey } from './identity.js';
-import { browseTMDB } from './explore.js';
+import { EXPLORE_GENRES, browseTMDB, browseRandomTMDB } from './explore.js';
 
 const $ = (id)=>document.getElementById(id);
 const esc = (value)=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10,7 +10,7 @@ const configured = Object.values(FIREBASE_CONFIG).every(v=>typeof v==='string'&&
 const tmdbReady = typeof TMDB_API_KEY==='string'&&TMDB_API_KEY.length>=8&&!TMDB_API_KEY.includes('INSERISCI');
 const state = { mode:'startup', user:null, entries:[], categories:[], status:'all', category:'all', query:'', sort:'rating-desc',
   unsubs:[], sdk:null, auth:null, db:null, selectedTmdb:null, searchSeq:0, searchTimer:null, busy:false, modalKind:'',
-  initialized:false, listenersReady:0, isAdmin:false, accessStatus:'', accessUnsub:null, adminUnsub:null, accessCreating:false, authGeneration:0, accessCheckInProgress:false, requests:[], page:'library', explore:{query:'',media:'all',genre:'',year:'',sort:'popularity.desc',page:0,items:[],hasMore:true,loading:false,requestId:0,controller:null} };
+  initialized:false, listenersReady:0, isAdmin:false, accessStatus:'', accessUnsub:null, adminUnsub:null, accessCreating:false, authGeneration:0, accessCheckInProgress:false, requests:[], page:'library', explore:{query:'',media:'all',genre:'',year:'',sort:'popularity.desc',page:0,items:[],hasMore:true,loading:false,requestId:0,controller:null,randomSeen:new Set(),randomPages:new Map(),randomSignature:''} };
 const DEMO_ITEMS = [
   {id:'demo-chainsaw',title:'Chainsaw Man',format:'Anime',status:'seen',ratingLabel:'11/10',categoryIds:['anime','fantasy'],demoPoster:'assets/frame_mock_chainsaw.jpg',createdMs:800},
   {id:'demo-alya',title:'Alya Sometimes Hides Her Feelings in Russian',format:'Anime',status:'seen',ratingLabel:'10 e lode',categoryIds:['anime','romance'],demoPoster:'assets/frame_mock_alya.jpg',createdMs:700},
@@ -413,24 +413,52 @@ function renderExploreCards(){
   }).join('');
   $('exploreLoading').hidden=!ex.loading;
   $('exploreEmpty').hidden=ex.loading||ex.items.length>0;
-  $('exploreMore').hidden=!ex.items.length||!ex.hasMore;
+  const random=ex.sort==='random';
+  $('exploreRandomRow').hidden=!random;
+  $('exploreRefresh').disabled=ex.loading;
+  $('exploreMore').hidden=random||!ex.items.length||!ex.hasMore;
   $('exploreMore').disabled=ex.loading;
-  $('exploreCount').textContent=ex.items.length?`${ex.items.length} titoli disponibili${ex.hasMore?' · altri risultati disponibili':''}`:'Cerca o esplora il catalogo TMDB';
+  $('exploreCount').textContent=ex.items.length?`${ex.items.length} ${random?'consigli casuali':'titoli disponibili'}${!random&&ex.hasMore?' · altri risultati disponibili':''}`:'Cerca o esplora il catalogo TMDB';
 }
 async function loadExplore(reset=false){
   const ex=state.explore;
   if(!tmdbReady){$('exploreError').textContent='Configura la chiave TMDB in config.js per utilizzare Esplora.';return;}
   if(ex.loading&&!reset)return;
   if(ex.controller)ex.controller.abort();
-  if(reset){ex.items=[];ex.page=0;ex.hasMore=true;}
+  const random=ex.sort==='random';
+  const signature=JSON.stringify([ex.query,ex.media,ex.genre,ex.year]);
+  if(signature!==ex.randomSignature){
+    ex.randomSeen.clear();ex.randomPages.clear();ex.randomSignature=signature;
+  }
+  if(reset){
+    if(!random)ex.items=[]; // Nei consigli casuali conserva i titoli fino all'arrivo dei nuovi.
+    ex.page=0;ex.hasMore=true;
+  }
   const page=ex.page+1;const seq=++ex.requestId;
   ex.controller=new AbortController();ex.loading=true;$('exploreError').textContent='';renderExploreCards();
   try{
-    const result=await browseTMDB(TMDB_API_KEY,ex,page,ex.controller.signal);
-    if(seq!==ex.requestId)return;
-    const previous=new Set(ex.items.map(x=>x.tmdbMediaType+':'+x.tmdbId));
-    ex.items.push(...result.items.filter(x=>!previous.has(x.tmdbMediaType+':'+x.tmdbId)));
-    ex.hasMore=result.hasMore&&page<500;ex.page=page;
+    if(random){
+      const seen=new Set(ex.randomSeen);
+      for(const entry of state.entries){
+        if(entry.tmdbId&&['movie','tv'].includes(entry.tmdbMediaType))seen.add(entry.tmdbMediaType+':'+entry.tmdbId);
+      }
+      const result=await browseRandomTMDB(TMDB_API_KEY,ex,{seen,usedPages:ex.randomPages},ex.controller.signal);
+      if(seq!==ex.requestId)return;
+      const next=result.items.filter(item=>!findDuplicate(state.entries,item));
+      if(next.length){
+        ex.items=next.slice(0,20);
+        for(const item of ex.items)ex.randomSeen.add(item.tmdbMediaType+':'+item.tmdbId);
+      }else{
+        $('exploreError').textContent='Nessun nuovo consiglio trovato con questi filtri. Prova un altro genere o anno.';
+      }
+      ex.hasMore=true;ex.page=1;
+    }else{
+      const result=await browseTMDB(TMDB_API_KEY,ex,page,ex.controller.signal);
+      if(seq!==ex.requestId)return;
+      const previous=new Set(ex.items.map(x=>x.tmdbMediaType+':'+x.tmdbId));
+      ex.items.push(...result.items.filter(x=>!previous.has(x.tmdbMediaType+':'+x.tmdbId)));
+      ex.hasMore=result.hasMore&&page<500;ex.page=page;
+    }
   }catch(err){if(seq===ex.requestId&&err.name!=='AbortError')$('exploreError').textContent=showError(err);}
   finally{if(seq===ex.requestId){ex.loading=false;renderExploreCards();}}
 }
@@ -738,6 +766,7 @@ function bind(){
     $(id).onchange=e=>{state.explore[field]=e.target.value;loadExplore(true)};
   }
   $('exploreMore').onclick=()=>loadExplore(false);
+  $('exploreRefresh').onclick=()=>loadExplore(true);
   $('exploreCards').onclick=e=>{const b=e.target.closest('[data-explore-open]');if(!b)return;
     const [type,id]=b.dataset.exploreOpen.split('_');openExploreDetail(type,id)};
   $('libraryCards').onkeydown=e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.media-card')){e.preventDefault();openEntry(e.target.dataset.edit)}};
@@ -746,5 +775,7 @@ function bind(){
   window.addEventListener('online',()=>{if(state.mode==='cloud')sync('Riconnessione...','warn')});
   window.addEventListener('offline',()=>{if(state.mode==='cloud')sync('Offline / cache','warn')});
 }
-function bootstrap(){bind();render();startCloud();if('serviceWorker' in navigator&&location.protocol==='https:')window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('PWA non disponibile',e)));}
+function bootstrap(){
+  $('exploreGenre').innerHTML=EXPLORE_GENRES.map(x=>`<option value="${esc(x.value)}">${esc(x.name)}</option>`).join('');
+  bind();render();startCloud();if('serviceWorker' in navigator&&location.protocol==='https:')window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('PWA non disponibile',e)));}
 bootstrap();

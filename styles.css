@@ -69,3 +69,14 @@
 .access-buttons{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.access-buttons .accent-button,.access-buttons .outline-button{padding:10px 14px;font-size:11px}
 .access-empty{color:#879c8a;padding:10px 4px;font-size:12px}.admin-panel .section-top{margin-top:18px}
 @media(max-width:700px){.access-row{flex-direction:column;align-items:stretch}.access-buttons{justify-content:flex-start}}
+
+/* FRAME — Solo sezione Scopri: nuovi consigli casuali (2026-11-12). */
+.explore-random-row{margin-top:17px;padding:17px;border-radius:13px;background:#1c2d20;border:1px solid #436247;display:flex;align-items:center;justify-content:space-between;gap:20px}
+.explore-random-row[hidden]{display:none}
+.explore-random-copy{min-width:0;display:flex;flex-direction:column;gap:6px}
+.explore-random-copy strong{font-size:12px;color:#eaf8e2}
+.explore-random-copy small{font-size:11px;line-height:1.5;color:#a3b6a5}
+.explore-refresh{white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:7px;flex:0 0 auto}
+.explore-refresh:disabled{opacity:.6;cursor:progress}
+.explore-filter-row select option{background:#19251e;color:#f5f3ee}
+@media(max-width:650px){.explore-random-row{align-items:stretch;flex-direction:column}.explore-refresh{width:100%}}
